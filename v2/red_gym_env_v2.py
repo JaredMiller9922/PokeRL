@@ -585,3 +585,8 @@ class RedGymEnv(Env):
             return self.essential_map_locations[map_idx]
         else:
             return -1
+    
+    # This method should be called in get_game_state_reward
+    def query_llm(self):
+        return 0
+
