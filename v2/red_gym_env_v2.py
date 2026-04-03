@@ -14,6 +14,7 @@ from gymnasium import Env, spaces
 from pyboy.utils import WindowEvent
 
 from global_map import local_to_global, GLOBAL_MAP_SHAPE
+from llm_utils import Models, LLMUtils
 
 event_flags_start = 0xD747
 event_flags_end = 0xD87E # expand for SS Anne # old - 0xD7F6 
@@ -119,6 +120,19 @@ class RedGymEnv(Env):
 
         if not config["headless"]:
             self.pyboy.set_emulation_speed(6)
+        
+        # LLM Variables
+        # - Ensure we don't add score forever
+        self.prev_llm_score = 0.0
+        self.current_llm_score = 0.0
+        self.llm_delta_reward = 0.0
+        # - Other variables
+        self.llm_query_freq = config["llm_query_freq"]
+        self.llm_weight = config["llm_weight"]
+
+        # Load the LLM
+        self.llm = LLMUtils(Models.QWEN3_32B)
+
 
     def reset(self, seed=None, options={}):
         self.seed = seed
@@ -162,6 +176,12 @@ class RedGymEnv(Env):
         self.progress_reward = self.get_game_state_reward()
         self.total_reward = sum([val for _, val in self.progress_reward.items()])
         self.reset_count += 1
+
+        #LLM variables
+        self.prev_llm_score = 0.0
+        self.current_llm_score = 0.0
+        self.llm_delta_reward = 0.0
+
         return self._get_obs(), {}
 
     def init_map_mem(self):
@@ -215,6 +235,9 @@ class RedGymEnv(Env):
         self.update_heal_reward()
 
         self.party_size = self.read_m(0xD163)
+
+        if self.step_count % self.llm_query_freq == 0 and self.step_count > 0:
+            self.query_llm()
 
         new_reward = self.update_reward()
 
@@ -522,10 +545,58 @@ class RedGymEnv(Env):
             #"dead": self.reward_scale * self.died_count * -0.1,
             "badge": self.reward_scale * self.get_badges() * 10,
             "explore": self.reward_scale * self.explore_weight * len(self.seen_coords) * 0.1,
-            "stuck": self.reward_scale * self.get_current_coord_count_reward() * -0.05
+            "stuck": self.reward_scale * self.get_current_coord_count_reward() * -0.05,
+            "llm": self.reward_scale * self.llm_weight * self.llm_delta_reward
         }
 
         return state_scores
+    
+    def query_llm(self):
+        x_pos, y_pos, map_n = self.get_game_coords()
+
+        levels = [
+            self.read_m(a) for a in [0xD18C, 0xD1B8, 0xD1E4, 0xD210, 0xD23C, 0xD268]
+        ]
+
+        prompt = f"""
+        You are evaluating the progress of a Pokemon Red reinforcement learning agent.
+
+        Return ONLY a single number between -1.0 and 1.0.
+
+        Scoring:
+        - positive if the agent seems to be making useful progress
+        - negative if the agent seems stuck, repetitive, or unproductive
+        - near 0 if neutral
+
+        Current state:
+        step: {self.step_count}
+        map: {map_n}
+        x: {x_pos}
+        y: {y_pos}
+        health_fraction: {self.read_hp_fraction():.3f}
+        badges: {self.get_badges()}
+        party_size: {self.read_m(0xD163)}
+        levels: {levels}
+        levels_sum: {sum(levels)}
+        seen_coords: {len(self.seen_coords)}
+        event_progress: {self.max_event_rew}
+        healing_reward: {self.total_healing_rew}
+        """
+
+        try:
+            response = self.llm.query(prompt).strip()
+            score = float(response)
+            score = max(-1.0, min(1.0, score))
+        except Exception as e:
+            print(f"LLM query failed: {e}")
+            score = 0.0
+
+        self.prev_llm_score = self.current_llm_score
+        self.current_llm_score = score
+        self.llm_delta_reward = self.current_llm_score - self.prev_llm_score
+
+        return self.llm_delta_reward
+
 
     def update_max_op_level(self):
         opp_base_level = 5
@@ -585,8 +656,3 @@ class RedGymEnv(Env):
             return self.essential_map_locations[map_idx]
         else:
             return -1
-    
-    # This method should be called in get_game_state_reward
-    def query_llm(self):
-        return 0
-

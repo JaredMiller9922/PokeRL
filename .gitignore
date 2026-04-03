@@ -13,3 +13,4 @@ PokemonRed.gb.state
 venv*
 .python-version
 PokemonRed.gb
+v2/llm_log.txt

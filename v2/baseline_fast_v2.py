@@ -41,15 +41,30 @@ if __name__ == "__main__":
     sess_path = Path(sess_id)
 
     env_config = {
-                'headless': True, 'save_final_state': False, 'early_stop': False,
-                'action_freq': 24, 'init_state': '../init.state', 'max_steps': ep_length, 
-                'print_rewards': True, 'save_video': False, 'fast_video': True, 'session_path': sess_path,
-                'gb_path': '../PokemonRed.gb', 'debug': False, 'reward_scale': 0.5, 'explore_weight': 0.25
+                # 'headless': True, 
+                'headless': False, 
+                'save_final_state': False, 
+                'early_stop': False,
+                'action_freq': 24, 
+                'init_state': '../init.state', 
+                'max_steps': ep_length, 
+                'print_rewards': True,
+                'save_video': False,
+                'fast_video': True, 
+                'session_path': sess_path,
+                'gb_path': '../PokemonRed.gb', 
+                'debug': False, 
+                'reward_scale': 0.5, 
+                'explore_weight': 0.25,
+                'llm_query_freq': 100, 
+                'llm_weight': 1.0
             }
     
     print(env_config)
     
-    num_cpu = 64 # Also sets the number of episodes per training iteration
+    # num_cpu = 64 # Also sets the number of episodes per training iteration
+    # TODO: Training will be terriblly slow this is just to test the LLM pipeline
+    num_cpu = 1 # Also sets the number of episodes per training iteration
     env = SubprocVecEnv([make_env(i, env_config) for i in range(num_cpu)])
     
     checkpoint_callback = CheckpointCallback(save_freq=ep_length//2, save_path=sess_path,
