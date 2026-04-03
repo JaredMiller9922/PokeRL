@@ -40,7 +40,7 @@ class LLMUtils:
             tokenize=False,
             add_generation_prompt=True,
         )
-        model_inputs = self.tokenizer([text], return_tensors="pt").to(model.device)
+        model_inputs = self.tokenizer([text], return_tensors="pt").to(self.model.device)
 
         # conduct text completion
         generated_ids = self.model.generate(
@@ -56,4 +56,5 @@ class LLMUtils:
 if __name__ == "__main__":
     # This code only runs if this file is executed directly
     llm = LLMUtils()
-    llm.query()
+    response = llm.query("Can you explain to me why humans can't fly?")
+    print(response)

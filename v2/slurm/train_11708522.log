@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/uufs/chpc.utah.edu/common/home/u1321655/PokeRL/v2/slurm/../hello_llm.py", line 58, in <module>
+    llm = LLMUtils()
+TypeError: LLMUtils.__init__() missing 1 required positional argument: 'model'
