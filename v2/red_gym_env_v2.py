@@ -17,6 +17,7 @@ from global_map import local_to_global, GLOBAL_MAP_SHAPE
 from llm_client import LLMClient
 
 from collections import deque
+import time
 
 event_flags_start = 0xD747
 event_flags_end = 0xD87E # expand for SS Anne # old - 0xD7F6 
@@ -146,6 +147,11 @@ class RedGymEnv(Env):
         # Load the LLM, session_id doesn't need to be set here because it will be set in reset and you only need a session_id when you query
         self.llm = LLMClient(thinking=self.llm_thinking)
 
+        # Logging Variables
+        self.run_start_time = None
+        self.elapsed_wall_time = 0.0
+        self.llm_query_count = 0
+
 
     def reset(self, seed=None, options={}):
         self.seed = seed
@@ -201,6 +207,11 @@ class RedGymEnv(Env):
 
         # Start the history off with the initial state summary
         self.record_llm_checkpoint()
+
+        # Logging variables
+        self.run_start_time = time.time()
+        self.elapsed_wall_time = 0.0
+        self.llm_query_count = 0
 
         return self._get_obs(), {}
 
@@ -262,9 +273,13 @@ class RedGymEnv(Env):
             if self.step_count % self.llm_checkpoint_freq == 0:
                 self.record_llm_checkpoint()
 
-            # Should we query the LLM
             if self.step_count % self.llm_query_freq == 0:
                 self.query_llm()
+
+            # Should we query the LLM
+            # offset = int(self.instance_id) * 50
+            # if (self.step_count + offset) % self.llm_query_freq == 0:
+                # self.query_llm()
 
         new_reward = self.update_reward()
 
@@ -655,6 +670,7 @@ class RedGymEnv(Env):
             )
 
         try:
+            self.llm_query_count += 1
             response = self.llm.query(
                 prompt=prompt,
                 session_id=self.llm_session_id,
@@ -672,6 +688,16 @@ class RedGymEnv(Env):
 
         return self.llm_delta_reward
 
+    def get_live_metrics(self):
+        if self.run_start_time is not None:
+            self.elapsed_wall_time = time.time() - self.run_start_time
+
+        return {
+            "step": int(self.step_count),
+            "event_raw": float(self.max_event_rew),
+            "elapsed_wall_time": float(self.elapsed_wall_time),
+            "llm_query_count": int(self.llm_query_count),
+        }
 
     def update_max_op_level(self):
         opp_base_level = 5

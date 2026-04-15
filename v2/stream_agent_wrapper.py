@@ -69,3 +69,9 @@ class StreamWrapper(gym.Wrapper):
             self.websocket = await websockets.connect(self.ws_address)
         except:
             self.websocket = None
+    
+    def get_live_metrics(self):
+        return self.env.get_live_metrics()
+    
+    def check_if_done(self):
+        return self.env.check_if_done()

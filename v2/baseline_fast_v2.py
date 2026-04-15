@@ -69,8 +69,7 @@ if __name__ == "__main__":
 
     # LLM With Thinking
     no_think_env_config = {
-                # 'headless': True, 
-                'headless': False, 
+                'headless': True, 
                 'save_final_state': True, 
                 'early_stop': False,
                 'action_freq': 24, 
@@ -90,13 +89,13 @@ if __name__ == "__main__":
                 'llm_num_checkpoints': 10,
                 'llm_weight': 1.0,
                 'llm_thinking': False,
-                'llm_max_new_tokens': 64
+                'llm_max_new_tokens': 8
             }
     
     # No LLM
     no_llm= {
                 # 'headless': True, 
-                'headless': False, 
+                'headless': True, 
                 'save_final_state': True, 
                 'early_stop': False,
                 'action_freq': 24, 
@@ -110,7 +109,7 @@ if __name__ == "__main__":
                 'debug': False, 
                 'reward_scale': 0.5, 
                 'explore_weight': 0.25,
-                'llm_enabled': True,
+                'llm_enabled': False,
                 'llm_query_freq': 500,
                 'llm_checkpoint_freq': 50,
                 'llm_num_checkpoints': 10,
@@ -123,13 +122,13 @@ if __name__ == "__main__":
     
     # num_cpu = 64 # Sets the number of parrarel training enviornments
     # TODO: Training will be terriblly slow this is just to test the LLM pipeline
-    num_cpu = 2 # Also sets the number of episodes per training iteration
+    num_cpu = 1 # Also sets the number of episodes per training iteration
     env = SubprocVecEnv([make_env(i, no_think_env_config) for i in range(num_cpu)])
     
     checkpoint_callback = CheckpointCallback(save_freq=ep_length//2, save_path=sess_path,
                                      name_prefix="poke")
     
-    callbacks = [checkpoint_callback, TensorboardCallback(sess_path)]
+    callbacks = [checkpoint_callback, TensorboardCallback(sess_path, live_log_frequency=250)]
 
     if use_wandb_logging:
         import wandb
@@ -167,6 +166,7 @@ if __name__ == "__main__":
     else:
         model = PPO("MultiInputPolicy", env, verbose=1, n_steps=train_steps_batch, batch_size=512, n_epochs=1, gamma=0.997, ent_coef=0.01, tensorboard_log=sess_path)
     
+    print("The model is being trained on " + str(model.device))
     print(model.policy)
 
     model.learn(total_timesteps=(ep_length)*num_cpu*10000, callback=CallbackList(callbacks), tb_log_name="poke_ppo")

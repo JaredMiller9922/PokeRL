@@ -28,16 +28,20 @@ def merge_dicts(dicts):
 
 class TensorboardCallback(BaseCallback):
 
-    def __init__(self, log_dir, verbose=0):
+    def __init__(self, log_dir, verbose=0, live_log_frequency=250):
         super().__init__(verbose)
         self.log_dir = log_dir
         self.writer = None
+        self.live_log_freq = live_log_frequency
 
     def _on_training_start(self):
         if self.writer is None:
-            self.writer = SummaryWriter(log_dir=os.path.join(self.log_dir, 'histogram'))
+            self.writer = SummaryWriter(log_dir=self.logger.get_dir())
+            # self.writer = SummaryWriter(log_dir=os.path.join(self.log_dir, 'histogram'))
 
     def _on_step(self) -> bool:
+        if self.n_calls % self.live_log_freq == 0:
+            self._log_live_progress()
         
         if self.training_env.env_method("check_if_done", indices=[0])[0]:
             all_infos = self.training_env.get_attr("agent_stats")
@@ -71,4 +75,21 @@ class TensorboardCallback(BaseCallback):
     def _on_training_end(self):
         if self.writer:
             self.writer.close()
+    
+    def _log_live_progress(self):
+        live_infos = self.training_env.env_method("get_live_metrics")
+        mean_infos, _ = merge_dicts(live_infos)
+
+        event_progress = mean_infos["event_raw"]
+        mean_step = int(mean_infos["step"])
+        mean_wall_time = int(mean_infos["elapsed_wall_time"])
+        mean_llm_queries = int(mean_infos["llm_query_count"])
+
+        # Standard TensorBoard scalar: x-axis will be training step
+        self.logger.record("live/event_progress", event_progress)
+
+        # Custom x-axes using SummaryWriter directly
+        self.writer.add_scalar("custom/timesteps_vs_event_progress", event_progress, mean_step)
+        self.writer.add_scalar("custom/wall_clock_vs_event_progress", event_progress, mean_wall_time)
+        self.writer.add_scalar("custom/llm_queries_vs_event_progress", event_progress, mean_llm_queries)
 

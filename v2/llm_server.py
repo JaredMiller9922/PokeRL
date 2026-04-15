@@ -4,6 +4,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 import torch
 from enum import Enum
 import re
+import time
 
 class Models(Enum):
     QWEN3_8B = 1
@@ -16,6 +17,7 @@ tokenizer = None
 model = None
 model_name = None
 # Dictionary with {session_id: message_list[]}
+enable_history = False
 histories = {}
 
 def load_model(model_id: int):
@@ -59,35 +61,48 @@ def query_model(req: QueryRequest):
     if req.session_id not in histories:
         histories[req.session_id] = []
 
-    history = histories[req.session_id]
-    history.append({"role": "user", "content": req.prompt})
+    if enable_history:
+        history = histories[req.session_id]
+        history.append({"role": "user", "content": req.prompt})
 
-    text = tokenizer.apply_chat_template(
-        history,
-        tokenize=False,
-        add_generation_prompt=True,
-        enable_thinking=req.thinking,
-    )
+        text = tokenizer.apply_chat_template(
+            history,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=req.thinking,
+        )
+    else:
+        messages = [{"role": "user", "content": req.prompt}]
+        text = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=req.thinking,
+        )
+    print(f"PROMPT LENGTH: {len(text)}", flush=True)
 
     model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
 
+    start = time.time()
     with torch.no_grad():
         generated_ids = model.generate(
             **model_inputs,
             max_new_tokens=req.max_new_tokens,
             do_sample=False,
     )
+    gen_time = time.time() - start
+    print(f"GEN TIME: {gen_time:.2f}s", flush=True)
 
     output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist()
     content = tokenizer.decode(output_ids, skip_special_tokens=True)
 
-    history.append({"role": "assistant", "content": content})
+    if enable_history:
+        history.append({"role": "assistant", "content": content})
 
-    # keep history bounded
-    max_history = 6
-    if len(history) > max_history:
-        history = history[-max_history:]
-        histories[req.session_id] = history
+        max_history = 2
+        if len(history) > max_history:
+            history = history[-max_history:]
+            histories[req.session_id] = history
 
     # extract last float in the output
     match = re.findall(r"[-+]?\d*\.\d+|\d+", content)
