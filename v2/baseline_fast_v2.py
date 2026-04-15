@@ -40,10 +40,11 @@ if __name__ == "__main__":
     sess_id = "runs"
     sess_path = Path(sess_id)
 
-    env_config = {
+    # LLM With Thinking
+    think_env_config = {
                 # 'headless': True, 
                 'headless': False, 
-                'save_final_state': False, 
+                'save_final_state': True, 
                 'early_stop': False,
                 'action_freq': 24, 
                 'init_state': '../init.state', 
@@ -56,16 +57,74 @@ if __name__ == "__main__":
                 'debug': False, 
                 'reward_scale': 0.5, 
                 'explore_weight': 0.25,
-                'llm_query_freq': 100, 
-                'llm_weight': 1.0
+                'llm_enabled': True,
+                'llm_query_freq': 500,
+                'llm_checkpoint_freq': 50,
+                'llm_num_checkpoints': 10,
+                'llm_weight': 1.0,
+                'llm_thinking': True,
+                'llm_max_new_tokens': 256
             }
     
-    print(env_config)
+
+    # LLM With Thinking
+    no_think_env_config = {
+                # 'headless': True, 
+                'headless': False, 
+                'save_final_state': True, 
+                'early_stop': False,
+                'action_freq': 24, 
+                'init_state': '../init.state', 
+                'max_steps': ep_length, 
+                'print_rewards': True,
+                'save_video': False,
+                'fast_video': True, 
+                'session_path': sess_path,
+                'gb_path': '../PokemonRed.gb', 
+                'debug': False, 
+                'reward_scale': 0.5, 
+                'explore_weight': 0.25,
+                'llm_enabled': True,
+                'llm_query_freq': 500,
+                'llm_checkpoint_freq': 50,
+                'llm_num_checkpoints': 10,
+                'llm_weight': 1.0,
+                'llm_thinking': False,
+                'llm_max_new_tokens': 64
+            }
     
-    # num_cpu = 64 # Also sets the number of episodes per training iteration
+    # No LLM
+    no_llm= {
+                # 'headless': True, 
+                'headless': False, 
+                'save_final_state': True, 
+                'early_stop': False,
+                'action_freq': 24, 
+                'init_state': '../init.state', 
+                'max_steps': ep_length, 
+                'print_rewards': True,
+                'save_video': False,
+                'fast_video': True, 
+                'session_path': sess_path,
+                'gb_path': '../PokemonRed.gb', 
+                'debug': False, 
+                'reward_scale': 0.5, 
+                'explore_weight': 0.25,
+                'llm_enabled': True,
+                'llm_query_freq': 500,
+                'llm_checkpoint_freq': 50,
+                'llm_num_checkpoints': 10,
+                'llm_weight': 1.0,
+                'llm_thinking': False,
+                'llm_max_new_tokens': 64
+            }
+    
+    print(no_think_env_config)
+    
+    # num_cpu = 64 # Sets the number of parrarel training enviornments
     # TODO: Training will be terriblly slow this is just to test the LLM pipeline
-    num_cpu = 1 # Also sets the number of episodes per training iteration
-    env = SubprocVecEnv([make_env(i, env_config) for i in range(num_cpu)])
+    num_cpu = 2 # Also sets the number of episodes per training iteration
+    env = SubprocVecEnv([make_env(i, no_think_env_config) for i in range(num_cpu)])
     
     checkpoint_callback = CheckpointCallback(save_freq=ep_length//2, save_path=sess_path,
                                      name_prefix="poke")

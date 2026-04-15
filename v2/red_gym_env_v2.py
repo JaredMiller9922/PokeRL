@@ -14,7 +14,9 @@ from gymnasium import Env, spaces
 from pyboy.utils import WindowEvent
 
 from global_map import local_to_global, GLOBAL_MAP_SHAPE
-from llm_utils import Models, LLMUtils
+from llm_client import LLMClient
+
+from collections import deque
 
 event_flags_start = 0xD747
 event_flags_end = 0xD87E # expand for SS Anne # old - 0xD7F6 
@@ -126,12 +128,23 @@ class RedGymEnv(Env):
         self.prev_llm_score = 0.0
         self.current_llm_score = 0.0
         self.llm_delta_reward = 0.0
-        # - Other variables
-        self.llm_query_freq = config["llm_query_freq"]
-        self.llm_weight = config["llm_weight"]
 
-        # Load the LLM
-        self.llm = LLMUtils(Models.QWEN3_32B)
+        self.llm_enabled = config.get("llm_enabled", True)
+        self.llm_query_freq = config.get("llm_query_freq", True)
+        self.llm_checkpoint_freq = config.get("llm_checkpoint_freq", True)
+        self.llm_num_checkpoints = config.get("llm_num_checkpoints", True)
+        self.llm_weight = config.get("llm_weight", True)
+        self.llm_thinking = config.get("llm_thinking", True)
+        self.llm_max_new_tokens = config.get("llm_max_new_tokens", True)
+
+        # Create a deque object (doubly linked list in python) for managing checkpoints
+        self.llm_state_history = deque(maxlen=self.llm_num_checkpoints)
+
+        # Episode-specific session id, this is assigned in reset()
+        self.llm_session_id = None
+
+        # Load the LLM, session_id doesn't need to be set here because it will be set in reset and you only need a session_id when you query
+        self.llm = LLMClient(thinking=self.llm_thinking)
 
 
     def reset(self, seed=None, options={}):
@@ -181,6 +194,13 @@ class RedGymEnv(Env):
         self.prev_llm_score = 0.0
         self.current_llm_score = 0.0
         self.llm_delta_reward = 0.0
+
+        self.llm_state_history.clear()
+        # Base the session_id off the reset_count so it is always unique 
+        self.llm_session_id = f"{self.instance_id}_reset_{self.reset_count}"
+
+        # Start the history off with the initial state summary
+        self.record_llm_checkpoint()
 
         return self._get_obs(), {}
 
@@ -236,8 +256,15 @@ class RedGymEnv(Env):
 
         self.party_size = self.read_m(0xD163)
 
-        if self.step_count % self.llm_query_freq == 0 and self.step_count > 0:
-            self.query_llm()
+        # Ensure llm is enabled and we aren't on the 0th step
+        if self.llm_enabled and self.step_count > 0:
+            # Should we be recording a checkpoint 
+            if self.step_count % self.llm_checkpoint_freq == 0:
+                self.record_llm_checkpoint()
+
+            # Should we query the LLM
+            if self.step_count % self.llm_query_freq == 0:
+                self.query_llm()
 
         new_reward = self.update_reward()
 
@@ -551,45 +578,93 @@ class RedGymEnv(Env):
 
         return state_scores
     
-    def query_llm(self):
+    def build_llm_state_summary(self):
         x_pos, y_pos, map_n = self.get_game_coords()
-
+        # Check memory addresses for levels of pokemon
         levels = [
             self.read_m(a) for a in [0xD18C, 0xD1B8, 0xD1E4, 0xD210, 0xD23C, 0xD268]
         ]
 
-        prompt = f"""
-        You are evaluating the progress of a Pokemon Red reinforcement learning agent.
+        return {
+            "step": int(self.step_count),
+            "map": int(map_n),
+            "x": int(x_pos),
+            "y": int(y_pos),
+            "health_fraction": round(float(self.read_hp_fraction()), 3),
+            "badges": int(self.get_badges()),
+            "party_size": int(self.read_m(0xD163)),
+            "levels": [int(v) for v in levels],
+            "levels_sum": int(sum(levels)),
+            "seen_coords": int(len(self.seen_coords)),
+            "event_progress": float(self.max_event_rew),
+            "healing_reward": round(float(self.total_healing_rew), 3),
+            "deaths": int(self.died_count),
+            "max_map_progress": int(self.max_map_progress),
+        }
 
-        Return ONLY a single number between -1.0 and 1.0.
+    def record_llm_checkpoint(self):
+        # Simply append the state_summary to the history
+        self.llm_state_history.append(self.build_llm_state_summary())
+    
+    def query_llm(self):
+        if not self.llm_enabled:
+            self.llm_delta_reward = 0.0
+            return 0.0
 
-        Scoring:
-        - positive if the agent seems to be making useful progress
-        - negative if the agent seems stuck, repetitive, or unproductive
-        - near 0 if neutral
+        if len(self.llm_state_history) == 0:
+            self.llm_delta_reward = 0.0
+            return 0.0
 
-        Current state:
-        step: {self.step_count}
-        map: {map_n}
-        x: {x_pos}
-        y: {y_pos}
-        health_fraction: {self.read_hp_fraction():.3f}
-        badges: {self.get_badges()}
-        party_size: {self.read_m(0xD163)}
-        levels: {levels}
-        levels_sum: {sum(levels)}
-        seen_coords: {len(self.seen_coords)}
-        event_progress: {self.max_event_rew}
-        healing_reward: {self.total_healing_rew}
-        """
+        # Take the history and put it in a list to enumerate over
+        trajectory = list(self.llm_state_history)
+
+        prompt = (
+            "You are evaluating the progress of a Pokemon Red reinforcement learning agent.\n\n"
+            "You will be given a short trajectory of recent checkpoints from one episode.\n"
+            "Return ONLY a single number between -1.0 and 1.0.\n\n"
+            "Scoring:\n"
+            "- positive if the trajectory shows useful progress\n"
+            "- negative if the agent seems stuck, repetitive, or unproductive\n"
+            "- near 0 if neutral or ambiguous\n\n"
+            "Consider:\n"
+            "- movement to new places\n"
+            "- increasing event progress\n"
+            "- useful exploration\n"
+            "- surviving and improving state\n"
+            "- whether the agent appears to be looping or stalled\n\n"
+            "Recent trajectory checkpoints:\n"
+        )
+
+        for i, state in enumerate(trajectory, start=1):
+            prompt += (
+                f"\nCheckpoint {i}:\n"
+                f"step: {state['step']}\n"
+                f"map: {state['map']}\n"
+                f"x: {state['x']}\n"
+                f"y: {state['y']}\n"
+                f"health_fraction: {state['health_fraction']}\n"
+                f"badges: {state['badges']}\n"
+                f"party_size: {state['party_size']}\n"
+                f"levels: {state['levels']}\n"
+                f"levels_sum: {state['levels_sum']}\n"
+                f"seen_coords: {state['seen_coords']}\n"
+                f"event_progress: {state['event_progress']}\n"
+                f"healing_reward: {state['healing_reward']}\n"
+                f"deaths: {state['deaths']}\n"
+                f"max_map_progress: {state['max_map_progress']}\n"
+            )
 
         try:
-            response = self.llm.query(prompt).strip()
+            response = self.llm.query(
+                prompt=prompt,
+                session_id=self.llm_session_id,
+                max_new_tokens=self.llm_max_new_tokens,
+            ).strip()
             score = float(response)
             score = max(-1.0, min(1.0, score))
         except Exception as e:
             print(f"LLM query failed: {e}")
-            score = 0.0
+            score = self.current_llm_score
 
         self.prev_llm_score = self.current_llm_score
         self.current_llm_score = score

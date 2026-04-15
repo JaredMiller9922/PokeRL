@@ -8,7 +8,11 @@ parser.add_argument("-m", "--model", type=int, help = "1. Qwen3-8B, 2.Qwen3-32B"
 args = parser.parse_args()
 
 # Set the model before starting the server
-print(args.model)
+if (args.model == 1):
+    print("Using Qwen3-8B")
+elif (args.model == 2):
+    print("Using Qwen3-32B")
+
 
 llm_server.load_model(model_id=args.model)   # 1 = Qwen3-8B, 2 = Qwen3-32B
 

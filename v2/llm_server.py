@@ -2,8 +2,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 import torch
-import argparse
 from enum import Enum
+import re
 
 class Models(Enum):
     QWEN3_8B = 1
@@ -50,6 +50,7 @@ class QueryRequest(BaseModel):
     prompt: str
     max_new_tokens: int = 64
     session_id: str = "default"
+    thinking: bool = False
 
 
 @app.post("/query")
@@ -65,7 +66,7 @@ def query_model(req: QueryRequest):
         history,
         tokenize=False,
         add_generation_prompt=True,
-        enable_thinking=False,
+        enable_thinking=req.thinking,
     )
 
     model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
@@ -83,9 +84,20 @@ def query_model(req: QueryRequest):
     history.append({"role": "assistant", "content": content})
 
     # keep history bounded
-    max_history = 10
+    max_history = 6
     if len(history) > max_history:
         history = history[-max_history:]
         histories[req.session_id] = history
 
-    return {"response": content}
+    # extract last float in the output
+    match = re.findall(r"[-+]?\d*\.\d+|\d+", content)
+
+    if match:
+        clean_output = match[-1]  # take last number
+    else:
+        clean_output = "0.0"     # fallback
+
+    print("RAW:", content, flush=True)
+    print("PARSED:", clean_output, flush=True)
+
+    return {"response": clean_output}
