@@ -9,6 +9,10 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
 from tensorboard_callback import TensorboardCallback
+import argparse
+
+
+    
 
 def make_env(rank, env_conf, seed=0):
     """
@@ -35,40 +39,54 @@ def make_env(rank, env_conf, seed=0):
 
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser(description="Script To Train PPO Agent")
+
+    parser.add_argument("-c", "--config", type=int, help = "1. LLM With Thinking, 2. LLM Without Thinking, 3. Vanilla PPO")
+    args = parser.parse_args()
+
     use_wandb_logging = False
     ep_length = 2048 * 80
+    # TODO: This is for testing the visualizations
     sess_id = "runs"
     sess_path = Path(sess_id)
 
-    # LLM With Thinking
-    think_env_config = {
-                # 'headless': True, 
-                'headless': False, 
-                'save_final_state': True, 
-                'early_stop': False,
-                'action_freq': 24, 
-                'init_state': '../init.state', 
-                'max_steps': ep_length, 
-                'print_rewards': True,
-                'save_video': False,
-                'fast_video': True, 
-                'session_path': sess_path,
-                'gb_path': '../PokemonRed.gb', 
-                'debug': False, 
-                'reward_scale': 0.5, 
-                'explore_weight': 0.25,
-                'llm_enabled': True,
-                'llm_query_freq': 500,
-                'llm_checkpoint_freq': 50,
-                'llm_num_checkpoints': 10,
-                'llm_weight': 1.0,
-                'llm_thinking': True,
-                'llm_max_new_tokens': 256
-            }
-    
-
-    # LLM With Thinking
-    no_think_env_config = {
+    env_config = None
+    agent_name = "Default"
+    num_cpu = 48
+    if (args.config == 1):
+        # LLM With Thinking
+        agent_name = "llm_with_thinking"
+        env_config = think_env_config = {
+            # 'headless': True, 
+            'headless': False, 
+            'save_final_state': True, 
+            'early_stop': False,
+            'action_freq': 24, 
+            'init_state': '../init.state', 
+            'max_steps': ep_length, 
+            'print_rewards': True,
+            'save_video': False,
+            'fast_video': True, 
+            'session_path': sess_path,
+            'gb_path': '../PokemonRed.gb', 
+            'debug': False, 
+            'reward_scale': 0.5, 
+            'explore_weight': 0.25,
+            'llm_enabled': True,
+            'llm_query_freq': 500,
+            'llm_checkpoint_freq': 50,
+            'llm_num_checkpoints': 10,
+            'llm_weight': 1.0,
+            'llm_thinking': True,
+            'llm_max_new_tokens': 256,
+            'agent_name': agent_name,
+            'log_agent_stats': True
+        }
+        num_cpu = 1
+    elif (args.config == 2):
+        # LLM Without Thinking
+        agent_name = "llm_without_thinking"
+        env_config = {
                 'headless': True, 
                 'save_final_state': True, 
                 'early_stop': False,
@@ -89,44 +107,48 @@ if __name__ == "__main__":
                 'llm_num_checkpoints': 10,
                 'llm_weight': 1.0,
                 'llm_thinking': False,
-                'llm_max_new_tokens': 8
-            }
+                'llm_max_new_tokens': 8,
+                'agent_name': agent_name,
+                'log_agent_stats': True
+        }
+        num_cpu = 48
+    else:
+        # No LLM
+        agent_name = "vanilla_ppo"
+        env_config = {
+            # 'headless': True, 
+            'headless': True, 
+            'save_final_state': True, 
+            'early_stop': False,
+            'action_freq': 24, 
+            'init_state': '../init.state', 
+            'max_steps': ep_length, 
+            'print_rewards': True,
+            'save_video': False,
+            'fast_video': True, 
+            'session_path': sess_path,
+            'gb_path': '../PokemonRed.gb', 
+            'debug': False, 
+            'reward_scale': 0.5, 
+            'explore_weight': 0.25,
+            'llm_enabled': False,
+            'llm_query_freq': 500,
+            'llm_checkpoint_freq': 50,
+            'llm_num_checkpoints': 10,
+            'llm_weight': 1.0,
+            'llm_thinking': False,
+            'llm_max_new_tokens': 64,
+            'agent_name': agent_name,
+            'log_agent_stats': True
+        }
+        num_cpu = 48
     
-    # No LLM
-    no_llm= {
-                # 'headless': True, 
-                'headless': True, 
-                'save_final_state': True, 
-                'early_stop': False,
-                'action_freq': 24, 
-                'init_state': '../init.state', 
-                'max_steps': ep_length, 
-                'print_rewards': True,
-                'save_video': False,
-                'fast_video': True, 
-                'session_path': sess_path,
-                'gb_path': '../PokemonRed.gb', 
-                'debug': False, 
-                'reward_scale': 0.5, 
-                'explore_weight': 0.25,
-                'llm_enabled': False,
-                'llm_query_freq': 500,
-                'llm_checkpoint_freq': 50,
-                'llm_num_checkpoints': 10,
-                'llm_weight': 1.0,
-                'llm_thinking': False,
-                'llm_max_new_tokens': 64
-            }
+    print(env_config)
     
-    print(no_think_env_config)
-    
-    # num_cpu = 64 # Sets the number of parrarel training enviornments
-    # TODO: Training will be terriblly slow this is just to test the LLM pipeline
-    num_cpu = 1 # Also sets the number of episodes per training iteration
-    env = SubprocVecEnv([make_env(i, no_think_env_config) for i in range(num_cpu)])
+    env = SubprocVecEnv([make_env(i, env_config) for i in range(num_cpu)])
     
     checkpoint_callback = CheckpointCallback(save_freq=ep_length//2, save_path=sess_path,
-                                     name_prefix="poke")
+                                     name_prefix=agent_name)
     
     callbacks = [checkpoint_callback, TensorboardCallback(sess_path, live_log_frequency=250)]
 
@@ -137,7 +159,7 @@ if __name__ == "__main__":
         run = wandb.init(
             project="pokemon-train",
             id=sess_id,
-            name="v2-a",
+            name=agent_name,
             config=env_config,
             sync_tensorboard=True,  
             monitor_gym=True,  
@@ -169,7 +191,7 @@ if __name__ == "__main__":
     print("The model is being trained on " + str(model.device))
     print(model.policy)
 
-    model.learn(total_timesteps=(ep_length)*num_cpu*10000, callback=CallbackList(callbacks), tb_log_name="poke_ppo")
+    model.learn(total_timesteps=(ep_length)*num_cpu*10000, callback=CallbackList(callbacks), tb_log_name=agent_name)
 
     if use_wandb_logging:
         run.finish()

@@ -33,10 +33,12 @@ class TensorboardCallback(BaseCallback):
         self.log_dir = log_dir
         self.writer = None
         self.live_log_freq = live_log_frequency
+        self.agent_name = None
 
     def _on_training_start(self):
         if self.writer is None:
             self.writer = SummaryWriter(log_dir=self.logger.get_dir())
+            self.agent_name = self.training_env.env_method("get_agent_name")[0]
             # self.writer = SummaryWriter(log_dir=os.path.join(self.log_dir, 'histogram'))
 
     def _on_step(self) -> bool:

@@ -75,3 +75,6 @@ class StreamWrapper(gym.Wrapper):
     
     def check_if_done(self):
         return self.env.check_if_done()
+    
+    def get_agent_name(self):
+        return self.env.agent_name

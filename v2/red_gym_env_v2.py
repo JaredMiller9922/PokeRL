@@ -18,6 +18,7 @@ from llm_client import LLMClient
 
 from collections import deque
 import time
+import pandas as pd
 
 event_flags_start = 0xD747
 event_flags_end = 0xD87E # expand for SS Anne # old - 0xD7F6 
@@ -151,6 +152,8 @@ class RedGymEnv(Env):
         self.run_start_time = None
         self.elapsed_wall_time = 0.0
         self.llm_query_count = 0
+        self.agent_name = config.get("agent_name", True)
+        self.log_agent_stats = config.get("log_agent_stats", True)
 
 
     def reset(self, seed=None, options={}):
@@ -288,6 +291,8 @@ class RedGymEnv(Env):
         self.update_map_progress()
 
         step_limit_reached = self.check_if_done()
+        if step_limit_reached:
+            self.save_agent_stats()
 
         obs = self._get_obs()
 
@@ -577,8 +582,6 @@ class RedGymEnv(Env):
         )
 
     def get_game_state_reward(self, print_stats=False):
-        # addresses from https://datacrystal.romhacking.net/wiki/Pok%C3%A9mon_Red/Blue:RAM_map
-        # https://github.com/pret/pokered/blob/91dc3c9f9c8fd529bb6e8307b58b96efa0bec67e/constants/event_constants.asm
         state_scores = {
             "event": self.reward_scale * self.update_max_event_rew() * 4,
             #"level": self.reward_scale * self.get_levels_reward(),
@@ -698,6 +701,28 @@ class RedGymEnv(Env):
             "elapsed_wall_time": float(self.elapsed_wall_time),
             "llm_query_count": int(self.llm_query_count),
         }
+    
+    def save_agent_stats(self):
+        if not self.log_agent_stats or len(self.agent_stats) == 0:
+            return
+
+        df = pd.DataFrame(self.agent_stats)
+
+        out_path = self.s_path / Path(
+            f"trajectories/{self.agent_name}/agent_stats_{self.instance_id}.csv.gz"
+        )
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        write_header = not out_path.exists()
+
+        df.to_csv(
+            out_path,
+            mode="a",
+            header=write_header,
+            index=False,
+            compression="gzip",
+        )
 
     def update_max_op_level(self):
         opp_base_level = 5
