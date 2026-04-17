@@ -47,6 +47,7 @@ def load_model(model_id: int):
         device_map="auto",
         cache_dir=cache_name
     )
+    model.eval()
 
 class QueryRequest(BaseModel):
     prompt: str
@@ -79,12 +80,12 @@ def query_model(req: QueryRequest):
             add_generation_prompt=True,
             enable_thinking=req.thinking,
         )
-    print(f"PROMPT LENGTH: {len(text)}", flush=True)
+    # print(f"PROMPT LENGTH: {len(text)}", flush=True)
 
     model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
 
     start = time.time()
-    with torch.no_grad():
+    with torch.inference_mode():
         generated_ids = model.generate(
             **model_inputs,
             max_new_tokens=req.max_new_tokens,
@@ -112,7 +113,7 @@ def query_model(req: QueryRequest):
     else:
         clean_output = "0.0"     # fallback
 
-    print("RAW:", content, flush=True)
-    print("PARSED:", clean_output, flush=True)
+    # print("RAW:", content, flush=True)
+    # print("PARSED:", clean_output, flush=True)
 
     return {"response": clean_output}

@@ -276,13 +276,13 @@ class RedGymEnv(Env):
             if self.step_count % self.llm_checkpoint_freq == 0:
                 self.record_llm_checkpoint()
 
-            if self.step_count % self.llm_query_freq == 0:
-                self.query_llm()
+            # if self.step_count % self.llm_query_freq == 0:
+                # self.query_llm()
 
             # Should we query the LLM
-            # offset = int(self.instance_id) * 50
-            # if (self.step_count + offset) % self.llm_query_freq == 0:
-                # self.query_llm()
+            offset = int(self.instance_id, 16) % self.llm_query_freq
+            if (self.step_count + offset) % self.llm_query_freq == 0:
+                self.query_llm()
 
         new_reward = self.update_reward()
 

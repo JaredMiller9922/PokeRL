@@ -70,11 +70,12 @@ def game_coord_to_pixel_coord(
         68: np.array([65, 190]), # Pokémon Center (Route 4)
         193: None # Badges check gate (Route 22)
     }
-    if map_idx in map_offsets.keys():
+    if map_idx in map_offsets and map_offsets[map_idx] is not None:
         offset = map_offsets[map_idx]
     else:
-        offset = np.array([0,0])
+        offset = np.array([0, 0])
         x, y = 0, 0
+
     coord = global_offset + 16*(offset + np.array([x,y]))
     coord[1] = base_y - coord[1]
     return coord

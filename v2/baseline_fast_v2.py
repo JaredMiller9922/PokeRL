@@ -46,7 +46,6 @@ if __name__ == "__main__":
 
     use_wandb_logging = False
     ep_length = 2048 * 80
-    # TODO: This is for testing the visualizations
     sess_id = "runs"
     sess_path = Path(sess_id)
 
@@ -107,11 +106,11 @@ if __name__ == "__main__":
                 'llm_num_checkpoints': 10,
                 'llm_weight': 1.0,
                 'llm_thinking': False,
-                'llm_max_new_tokens': 8,
+                'llm_max_new_tokens': 2,
                 'agent_name': agent_name,
                 'log_agent_stats': True
         }
-        num_cpu = 48
+        num_cpu = 24
     else:
         # No LLM
         agent_name = "vanilla_ppo"
