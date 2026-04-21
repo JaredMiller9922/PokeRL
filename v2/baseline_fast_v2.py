@@ -106,11 +106,11 @@ if __name__ == "__main__":
                 'llm_num_checkpoints': 10,
                 'llm_weight': 1.0,
                 'llm_thinking': False,
-                'llm_max_new_tokens': 2,
+                'llm_max_new_tokens': 4,
                 'agent_name': agent_name,
                 'log_agent_stats': True
         }
-        num_cpu = 24
+        num_cpu = 1
     else:
         # No LLM
         agent_name = "vanilla_ppo"
